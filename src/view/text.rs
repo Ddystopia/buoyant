@@ -40,7 +40,7 @@ pub enum WrapStrategy {
 /// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct Text<'a, T, F: Font> {
+pub struct Text<'a, T, F: Font, const LINES: usize> {
     #[allow(clippy::struct_field_names)]
     pub(crate) text: T,
     pub(crate) font: &'a F,
@@ -60,8 +60,8 @@ pub struct WrappedLine<'a> {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct Sublayout {
-    line_ranges: heapless::Vec<crate::render::text::Line, 8, u8>,
+pub struct Sublayout<const LINES: usize> {
+    line_ranges: heapless::Vec<crate::render::text::Line, LINES, u8>,
     manual_offset: (i16, i16),
     wrap_size: (u16, u16),
     line_count: u16,
@@ -89,10 +89,16 @@ impl HorizontalTextAlignment {
     }
 }
 
-impl<'a, T: AsRef<str>, F: Font> Text<'a, T, F> {
+impl<const N: usize, T, F: Font> Text<'_, T, F, N> {
+    const _ASSERT_LINES_FIT_IN_U8: () = assert!(N <= u8::MAX as usize);
+}
+
+impl<'a, T: AsRef<str>, F: Font> Text<'a, T, F, 0> {
     #[allow(missing_docs)]
     #[must_use]
     pub fn new(text: T, font: &'a F) -> Self {
+        let () = Self::_ASSERT_LINES_FIT_IN_U8;
+
         Self {
             text,
             font,
@@ -102,6 +108,41 @@ impl<'a, T: AsRef<str>, F: Font> Text<'a, T, F> {
             wrap: WrapStrategy::Word,
         }
     }
+}
+
+impl<'a, const N: usize, T: AsRef<str>, F: Font> Text<'a, T, F, N> {
+    #[allow(missing_docs)]
+    #[must_use]
+    pub fn with_cached_lines<const CACHED_LINES: usize>(self) -> Text<'a, T, F, CACHED_LINES> {
+        let () = Self::_ASSERT_LINES_FIT_IN_U8;
+
+        Text {
+            text: self.text,
+            font: self.font,
+            attributes: self.attributes,
+            alignment: self.alignment,
+            precise_character_bounds: self.precise_character_bounds,
+            wrap: self.wrap,
+        }
+    }
+}
+
+impl<'a, const N: usize, T, F: Font> Text<'a, T, F, N> {
+    #[allow(missing_docs)]
+    #[must_use]
+    pub fn new_lines(text: T, font: &'a F) -> Self {
+        let () = Self::_ASSERT_LINES_FIT_IN_U8;
+
+        Self {
+            text,
+            font,
+            attributes: F::Attributes::default(),
+            alignment: HorizontalTextAlignment::default(),
+            precise_character_bounds: false,
+            wrap: WrapStrategy::Word,
+        }
+    }
+
     /// Sets the wrapping strategy for the text.
     #[must_use]
     pub fn with_wrap_strategy(mut self, strategy: WrapStrategy) -> Self {
@@ -110,7 +151,7 @@ impl<'a, T: AsRef<str>, F: Font> Text<'a, T, F> {
     }
 }
 
-impl<T, F: Font> Text<'_, T, F> {
+impl<const N: usize, T, F: Font> Text<'_, T, F, N> {
     /// Calculate the vertical extent (min y, max y) for a line of text.
     /// This is used for first and last lines to determine vertical bounds.
     fn calculate_vertical_extent(
@@ -142,7 +183,7 @@ impl<T, F: Font> Text<'_, T, F> {
     }
 }
 
-impl<'a, F: Font> Text<'a, (), F> {
+impl<'a, F: Font> Text<'a, (), F, 0> {
     /// A convenience constructor for [`Text`] backed by an owned [`heapless::String<N>`]
     /// and formatted with the result of [`format_args!`].
     ///
@@ -160,14 +201,43 @@ impl<'a, F: Font> Text<'a, (), F> {
     pub fn new_fmt<const N: usize>(
         args: core::fmt::Arguments<'_>,
         font: &'a F,
-    ) -> Text<'a, heapless::String<N>, F> {
-        let mut s = heapless::String::<N>::new();
+    ) -> Text<'a, heapless::String<N, u8>, F, 0> {
+        const {
+            assert!(
+                N <= u8::MAX as usize,
+                "Too many lines for this method. Use `Text::new_fmt_large::<N, L>`."
+            )
+        };
+        let mut s = heapless::String::<N, u8>::new();
+        _ = s.write_fmt(args);
+        Text::new(s, font)
+    }
+
+    /// A convenience constructor for [`Text`] backed by an owned [`heapless::String<N>`]
+    /// and formatted with the result of [`format_args!`]. Supports custom length type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use buoyant::view::prelude::*;
+    /// # use embedded_graphics::mono_font::ascii::FONT_9X15_BOLD;
+    /// # use embedded_graphics::pixelcolor::Rgb888;
+    /// #
+    /// fn counter(count: i32) -> impl View<Rgb888, ()> {
+    ///    Text::new_fmt_large::<320, u16>(format_args!("Count: {count}"), &FONT_9X15_BOLD)
+    /// }
+    /// ```
+    pub fn new_fmt_large<const N: usize, T: heapless::LenType>(
+        args: core::fmt::Arguments<'_>,
+        font: &'a F,
+    ) -> Text<'a, heapless::String<N, T>, F, 0> {
+        let mut s = heapless::String::<N, T>::new();
         _ = s.write_fmt(args);
         Text::new(s, font)
     }
 }
 
-impl<T, F: Font> Text<'_, T, F> {
+impl<const N: usize, T, F: Font> Text<'_, T, F, N> {
     /// Sets the alignment of multiline text.
     #[must_use]
     pub fn multiline_text_alignment(self, alignment: HorizontalTextAlignment) -> Self {
@@ -190,7 +260,7 @@ impl<T, F: Font> Text<'_, T, F> {
     }
 }
 
-impl<T, F: Font<Attributes: CustomSize>> Text<'_, T, F> {
+impl<const N: usize, T, F: Font<Attributes: CustomSize>> Text<'_, T, F, N> {
     /// Sets the font size
     #[must_use]
     pub fn with_font_size(self, size: u32) -> Self {
@@ -201,23 +271,23 @@ impl<T, F: Font<Attributes: CustomSize>> Text<'_, T, F> {
     }
 }
 
-impl<T: PartialEq, F: Font> PartialEq for Text<'_, T, F> {
+impl<const N: usize, T: PartialEq, F: Font> PartialEq for Text<'_, T, F, N> {
     fn eq(&self, other: &Self) -> bool {
         self.text == other.text
     }
 }
 
-impl<'a, T: Clone, F: Font> ViewMarker for Text<'a, T, F> {
-    type Renderables = render::Text<'a, T, F, 8>;
+impl<'a, const N: usize, T: Clone, F: Font> ViewMarker for Text<'a, T, F, N> {
+    type Renderables = render::Text<'a, T, F, N>;
     type Transition = Opacity;
 }
 
-impl<Captures: ?Sized, T, F> ViewLayout<Captures> for Text<'_, T, F>
+impl<const N: usize, Captures: ?Sized, T, F> ViewLayout<Captures> for Text<'_, T, F, N>
 where
     T: AsRef<str> + Clone,
     F: Font,
 {
-    type Sublayout = Sublayout;
+    type Sublayout = Sublayout<N>;
     type State = ();
 
     fn transition(&self) -> Self::Transition {
@@ -373,20 +443,20 @@ where
             wrap_size,
             line_count,
         } = &layout.sublayouts;
-        render::Text::new(
-            (
+        render::Text {
+            origin: (
                 origin.x as i16 + manual_offset.0,
                 origin.y as i16 + manual_offset.1,
             ),
-            *wrap_size,
-            self.font,
-            self.text.clone(),
-            self.attributes.clone(),
-            self.alignment,
-            line_ranges.clone(),
-            *line_count,
-            self.wrap,
-        )
+            size: *wrap_size,
+            font: self.font,
+            text: self.text.clone(),
+            attributes: self.attributes.clone(),
+            alignment: self.alignment,
+            lines: line_ranges.clone(),
+            max_lines: *line_count,
+            wrap: self.wrap,
+        }
     }
 }
 
