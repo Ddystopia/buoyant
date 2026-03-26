@@ -21,10 +21,12 @@ embedded-graphics = [
   "dep:embedded-graphics",
   "dep:embedded-graphics-core",
   "dep:u8g2-fonts",
-  "dep:embedded-ttf",
-  "dep:rusttype",
 ]
 crossterm = ["dep:crossterm", "std"]
+embedded-ttf = [
+  "dep:rusttype",
+  "dep:embedded-ttf",
+]
 embedded-graphics-simulator = [
   "embedded-graphics",
   "dep:embedded-graphics-simulator",

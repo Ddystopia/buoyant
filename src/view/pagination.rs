@@ -184,7 +184,6 @@ where
 
         let mut result = EventResult::default();
 
-        let handled = EventResult::new(true, false, false);
         let interaction = self.interaction(state);
         let focus = &mut state.focus;
         let entered = &mut state.entered;
@@ -251,13 +250,13 @@ where
                     (self.action)(PaginationAction::Previous, captures);
                     context.input.blur(state.observed_groups);
                     state.observed_groups = Groups::default();
-                    return handled.handled();
+                    return EventResult::new(true, true, false);
                 }
                 (D::Vertical, K::Down) | (D::Horizontal, K::Right) => {
                     (self.action)(PaginationAction::Next, captures);
                     context.input.blur(state.observed_groups);
                     state.observed_groups = Groups::default();
-                    return handled.handled();
+                    return EventResult::new(true, true, false);
                 }
                 (D::Vertical, K::Right | K::Left) | (D::Horizontal, K::Up | K::Down)
                     if focus.is_focused_any(groups) && self.reroute_navigation =>
