@@ -7,7 +7,7 @@ use core::cmp::max;
 
 use crate::environment::LayoutEnvironment;
 use crate::event::{Event, EventContext, EventResult, Key};
-use crate::focus::{FocusTree, FocusAction, FocusDirection, FocusGroup};
+use crate::focus::{FocusAction, FocusDirection, FocusGroup, FocusTree};
 use crate::layout::{HorizontalAlignment, LayoutDirection, ResolvedLayout, VerticalAlignment};
 use crate::primitives::{Dimension, Dimensions, Point, ProposedDimension, ProposedDimensions};
 use crate::transition::Opacity;
