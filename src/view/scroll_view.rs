@@ -124,6 +124,7 @@ pub struct ScrollView<Inner> {
     inner: Inner,
     bar_config: ScrollBarConfig,
     direction: ScrollDirection,
+    initial_pin_to_end: bool,
 }
 
 impl<Inner: ViewMarker> ScrollView<Inner> {
@@ -134,6 +135,7 @@ impl<Inner: ViewMarker> ScrollView<Inner> {
             inner,
             bar_config: ScrollBarConfig::default(),
             direction: ScrollDirection::default(),
+            initial_pin_to_end: false,
         }
     }
 
@@ -141,6 +143,17 @@ impl<Inner: ViewMarker> ScrollView<Inner> {
     #[must_use]
     pub fn with_direction(mut self, direction: ScrollDirection) -> Self {
         self.direction = direction;
+        self
+    }
+
+    /// Starts the scroll view pinned to the end of its content along the scroll axis.
+    ///
+    /// When enabled, a freshly built state renders its first frame scrolled to the
+    /// trailing edge (bottom for vertical, right for horizontal) and follows content
+    /// growth until the user scrolls away from the end.
+    #[must_use]
+    pub fn with_initial_pin_to_end(mut self, pin: bool) -> Self {
+        self.initial_pin_to_end = pin;
         self
     }
 
@@ -244,11 +257,21 @@ impl<Inner: ViewLayout<Captures>, Captures> ViewLayout<Captures> for ScrollView<
     }
 
     fn build_state(&self, captures: &mut Captures) -> Self::State {
+        let content_pinning = if self.initial_pin_to_end {
+            let (horizontal, vertical) = match self.direction {
+                ScrollDirection::Vertical => (false, true),
+                ScrollDirection::Horizontal => (true, false),
+                ScrollDirection::Both => (true, true),
+            };
+            ContentPinning::Pinned(horizontal, vertical)
+        } else {
+            ContentPinning::Floating
+        };
         Self::State {
             scroll_offset: Point::zero(),
             interaction: ScrollInteraction::Idle,
             inner_state: self.inner.build_state(captures),
-            content_pinning: ContentPinning::Floating,
+            content_pinning,
         }
     }
 
