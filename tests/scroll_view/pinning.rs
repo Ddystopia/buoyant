@@ -21,6 +21,48 @@ fn log_viewer(text: &str) -> impl View<char, ()> {
         .padding(Edges::All, 1)
 }
 
+/// A scrolling log viewer that starts pinned to the bottom
+fn pinned_log_viewer(text: &str) -> impl View<char, ()> {
+    ScrollView::new(Text::new(text, &CharacterBufferFont))
+        .with_direction(ScrollDirection::Vertical)
+        .with_initial_pin_to_end(true)
+        .with_bar_visibility(buoyant::view::scroll_view::ScrollBarVisibility::Never)
+        .padding(Edges::All, 1)
+}
+
+#[test]
+fn initial_pin_to_end_renders_first_frame_at_bottom() {
+    let mut buffer = FixedTextBuffer::<12, 5>::default();
+    let size = Size::new(12, 5);
+
+    let text = "Line1\nLine2\nLine3\nLine4\nLine5\nLine6";
+    let mut captures = ();
+    let view = pinned_log_viewer(text);
+    let mut state = view.build_state(&mut captures);
+
+    let tree = helpers::tree(
+        &view,
+        &mut captures,
+        &mut state,
+        Duration::from_secs(1),
+        size,
+    );
+
+    tree.render(&mut buffer, &' ');
+
+    // First frame is already scrolled to the bottom
+    assert_str_grid_eq!(
+        [
+            "            ",
+            " Line4      ",
+            " Line5      ",
+            " Line6      ",
+            "            ",
+        ],
+        &buffer.text
+    );
+}
+
 #[test]
 fn scrolled_to_bottom_stays_at_bottom_with_longer_content() {
     let mut buffer = FixedTextBuffer::<12, 5>::default();
