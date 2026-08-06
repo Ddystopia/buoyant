@@ -1,8 +1,11 @@
+use core::cell::Cell;
+
 use buoyant::{
     primitives::{Interpolate as _, Point},
     view::prelude::*,
 };
 use embedded_graphics::{
+    draw_target::DrawTarget,
     geometry::{OriginDimensions, Point as EgPoint, Size as EgSize},
     image::{Image as EgImage, ImageDrawable, ImageDrawableExt as _, SubImage},
     mock_display::MockDisplay,
@@ -187,4 +190,82 @@ fn animated_image_is_clipped_at_the_interpolated_position() {
         .unwrap();
 
     display.assert_eq(&display_2);
+}
+
+/// Counts of the drawing calls an [`ImageDrawable`] received.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct DrawCalls {
+    whole: u32,
+    sub: u32,
+}
+
+/// An image which records how it was asked to draw itself instead of drawing.
+#[derive(Debug)]
+struct ProbeImage<'a> {
+    size: EgSize,
+    calls: &'a Cell<DrawCalls>,
+}
+
+impl OriginDimensions for ProbeImage<'_> {
+    fn size(&self) -> EgSize {
+        self.size
+    }
+}
+
+impl ImageDrawable for ProbeImage<'_> {
+    type Color = Rgb888;
+
+    fn draw<D: DrawTarget<Color = Rgb888>>(&self, _target: &mut D) -> Result<(), D::Error> {
+        let mut calls = self.calls.get();
+        calls.whole += 1;
+        self.calls.set(calls);
+        Ok(())
+    }
+
+    fn draw_sub_image<D: DrawTarget<Color = Rgb888>>(
+        &self,
+        _target: &mut D,
+        _area: &EgRectangle,
+    ) -> Result<(), D::Error> {
+        let mut calls = self.calls.get();
+        calls.sub += 1;
+        self.calls.set(calls);
+        Ok(())
+    }
+}
+
+fn probe_draw_calls(offset: Point) -> DrawCalls {
+    let calls = Cell::new(DrawCalls::default());
+    let image = ProbeImage {
+        size: EgSize::new(24, 20),
+        calls: &calls,
+    };
+
+    _ = render_to_mock(&image_in_offset_clip(&image, offset), false);
+
+    calls.get()
+}
+
+#[test]
+fn fully_visible_image_is_drawn_in_one_piece() {
+    assert_eq!(
+        probe_draw_calls(Point::new(9, 6)),
+        DrawCalls { whole: 1, sub: 0 }
+    );
+}
+
+#[test]
+fn partially_visible_image_is_drawn_as_a_sub_image() {
+    assert_eq!(
+        probe_draw_calls(Point::new(-8, 6)),
+        DrawCalls { whole: 0, sub: 1 }
+    );
+}
+
+#[test]
+fn image_outside_the_clip_rect_is_not_drawn() {
+    assert_eq!(
+        probe_draw_calls(Point::new(-40, 6)),
+        DrawCalls { whole: 0, sub: 0 }
+    );
 }
