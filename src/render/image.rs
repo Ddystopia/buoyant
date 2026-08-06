@@ -81,13 +81,7 @@ mod embedded_graphics {
             render_target: &mut impl RenderTarget<ColorFormat = I::Color>,
             _style: &I::Color,
         ) {
-            let clip_area = render_target.clip_rect();
-            _ = self.image.sub_image(&clip_area.into()).draw(
-                &mut render_target
-                    .raw_surface()
-                    .draw_target()
-                    .translated(self.origin.into()),
-            );
+            draw_image(render_target, self.image, self.origin);
         }
 
         fn render_animated(
@@ -97,23 +91,36 @@ mod embedded_graphics {
             _style: &I::Color,
             domain: &super::AnimationDomain,
         ) {
-            let offset = Point::interpolate(source.origin, target.origin, domain.factor);
+            let origin = Point::interpolate(source.origin, target.origin, domain.factor);
             if domain.factor == 0 {
-                _ = source.image.draw(
-                    &mut render_target
-                        .raw_surface()
-                        .draw_target()
-                        .translated(offset.into()),
-                );
+                draw_image(render_target, source.image, origin);
             } else {
-                _ = target.image.draw(
-                    &mut render_target
-                        .raw_surface()
-                        .draw_target()
-                        .translated(offset.into()),
-                );
+                draw_image(render_target, target.image, origin);
             }
         }
+    }
+
+    /// Draws `image` with its top left corner at `origin` in the local coordinate space.
+    fn draw_image<I: ImageDrawable>(
+        render_target: &mut impl RenderTarget<ColorFormat = I::Color>,
+        image: &I,
+        origin: Point,
+    ) {
+        let clip_area = render_target.clip_rect();
+        let bounds = Rectangle::new(origin, image.size().into());
+        let Some(visible) = clip_area.intersection(&bounds) else {
+            return;
+        };
+
+        // `sub_image` areas are image local, with the top left corner of the
+        // image at the origin.
+        let sub_area = Rectangle::new(visible.origin - origin, visible.size);
+        _ = image.sub_image(&sub_area.into()).draw(
+            &mut render_target
+                .raw_surface()
+                .draw_target()
+                .translated(visible.origin.into()),
+        );
     }
 
     impl<I: ImageDrawable> IntrinsicShape for Image<'_, I> {
